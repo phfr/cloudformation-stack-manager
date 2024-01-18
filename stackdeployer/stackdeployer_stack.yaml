@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploys an AWS Lambda function that will deploy an input AWS CloudFormation template with a provided parameter file.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Input configuration
+        Parameters:
+          - TemplateURL
+          - ParamsFile
+          - StackID
+          - StackSubId
+    ParameterLabels:
+      TemplateURL:
+        default: Template URL
+      ParamsFile:
+        default: Parameters file S3 URI
+Parameters:
+  TemplateURL:
+    Type: String
+    Description: URL of the CloudFormation template you want to deploy
+  ParamsFile:
+    Type: String
+    Description: S3 URI of the parameters file stored in your S3 bucket; e.g., s3://my-bucket/demo-params.json.
+  StackID:
+    Type: String
+    Description: ID for the stack, eg. 'streaming-stack'
+  StackID:
+    Type: String
+    Description: further ID for the stack, for example d8e-API.show.ShowID
+Resources:
+  StackDeployerLambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: ["lambda.amazonaws.com"]
+          Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  StackDeployerDeployQSLambda:
+    Type: "AWS::Lambda::Function"
+    DependsOn:
+      - StackDeployerLambdaExecutionRole
+    Properties:
+      FunctionName: !Sub "Lambda-${AWS::StackName}"
+      Code:
+        ZipFile: |
+            import json
+            import boto3
+            import os
+            from datetime import datetime
+            from urllib.parse import urlparse
+            
+            params_url = os.environ['paramsFile']
+            template_url = os.environ['templateUrl']
+            stack_id =  os.environ['stackID']
+            stack_subid =  os.environ['stackSubID']
+            notification_arns = [ 'TODO arn' ] # store/retrieve arn to/from ssm parameter ?
+
+
+            def parse_params():
+              s3 = boto3.resource('s3')
+              s3_parse = urlparse(params_url)
+              bucket = s3_parse.netloc
+              s3_key = s3_parse.path.lstrip('/')
+              s3_obj = s3.Object(bucket, s3_key)
+              params_raw_data = s3_obj.get()["Body"].read().decode('utf-8')
+              template_params = json.loads(params_raw_data)
+              return template_params
+              
+            def launch_stack():
+              cfn = boto3.client('cloudformation')
+              current_ts = datetime.now().isoformat().split('.')[0].replace(':','-')
+              stackname = 'stack-' + stack_id + '-' stack_subid
+              capabilities = ['CAPABILITY_IAM', 'CAPABILITY_AUTO_EXPAND']
+              try:
+                template_params = parse_params()
+                stackdata = cfn.create_stack(
+                  StackName=stackname,
+                  DisableRollback=True,
+                  TemplateURL=template_url,
+                  Parameters=template_params,
+                  NotificationARNs=notification_arns,
+                  Capabilities=capabilities)
+              except Exception as e:
+                error_msg = str(e)
+                print(error_msg)
+                stackdata = {"error": error_msg}
+              return stackdata  
+
+            def stack_success(stackdata):
+              if 'error' in stackdata:
+                return False
+              else:
+                return True
+
+            def handler(event, context):
+              print("Received event:")
+              stack_result=launch_stack()
+              print(stack_result)
+
+              if stack_success(stack_result):
+                resp_txt = "stack has been launched"
+              else:
+                resp_txt = "stack failed to launch"
+
+              json_resp = {
+                "version": "1.0",
+                "response": {
+                  "outputSpeech": {
+                    "type": "PlainText",
+                    "text": resp_txt
+                  },
+                  "shouldEndSession": "true"
+                }
+              }
+              return json_resp              
+      Environment:
+        Variables:
+          templateUrl: !Ref 'TemplateURL'
+          paramsFile: !Ref 'ParamsFile'
+      Handler: "index.handler"
+      Runtime: "python3.6"
+      Timeout: 60
+      Role: !GetAtt StackDeployerLambdaExecutionRole.Arn            

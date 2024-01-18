@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "InputType",
+    "ParameterValue": "RTMP_PUSH"
+  }, 
+  {
+    "ParameterKey": "InputCIDR",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "EncodingProfile",
+    "ParameterValue": "HD-720p"
+  }
+]
