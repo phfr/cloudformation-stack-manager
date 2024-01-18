@@ -1,5 +1,10 @@
 ## Overview
 
+* streamlined way to start/stop AWS cloudformation stack
+* get notifications on slack, including status updates and output/input values
+* includes an example stack that resembles a rtmp input to hls live streaming pipeline
+
+
 ## cf-notify
 This is a stack that creates a SNS Event and a lambda handler for it.
 The SNS-Event-ARN should be passed to stack creations so the lambda handler gets notifications of stack creation events, can parse those and report to cloudwatch and slack. This is done because cloudformation does not support cloudwatch etc by default.
